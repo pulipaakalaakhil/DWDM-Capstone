@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  # Database Service (PostgreSQL 15)
+  postgres_db:
+    image: postgres:15-alpine
+    container_name: dwdm_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: traffic_user
+      POSTGRES_PASSWORD: traffic_secure_password
+      POSTGRES_DB: bangalore_traffic_dw
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/normalized/schema.sql:/docker-entrypoint-initdb.d/01_normalized.sql
+      - ./database/star/schema.sql:/docker-entrypoint-initdb.d/02_star.sql
+    networks:
+      - traffic_net
+
+  # FastAPI Backend Service
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: dwdm_backend
+    restart: always
+    environment:
+      - DATABASE_URL=postgresql://traffic_user:traffic_secure_password@postgres_db:5432/bangalore_traffic_dw
+      - ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres_db
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./reports:/app/reports
+    networks:
+      - traffic_net
+
+  # React + Vite Frontend Service
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: dwdm_frontend
+    restart: always
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    networks:
+      - traffic_net
+
+networks:
+  traffic_net:
+    driver: bridge
+
+volumes:
+  postgres_data:
